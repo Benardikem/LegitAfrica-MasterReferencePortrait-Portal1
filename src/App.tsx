@@ -15,15 +15,26 @@ export default function App() {
   const [frames, setFrames] = useState<AdvertFrame[]>(INITIAL_FRAMES);
   const [isGeneratingRef, setIsGeneratingRef] = useState(false);
   const [refApiError, setRefApiError] = useState<string | null>(null);
-  const [isBillingError, setIsBillingError] = useState(true); // Initial state based on API test
+  const [isBillingError, setIsBillingError] = useState(false);
   const [isRetryingBilling, setIsRetryingBilling] = useState(false);
 
   // Modals
   const [isContactSheetOpen, setIsContactSheetOpen] = useState(false);
   const [selectedInspectFrame, setSelectedInspectFrame] = useState<AdvertFrame | null>(null);
 
-  // Restore Master Reference Image from persistent storage on mount
+  // Restore Master Reference Image from persistent storage on mount & check billing
   useEffect(() => {
+    // Check billing status
+    fetch('/api/check-billing')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.billingActive) {
+          setIsBillingError(false);
+        } else if (data?.isBillingDepleted) {
+          setIsBillingError(true);
+        }
+      })
+      .catch(() => {});
     try {
       const localRef = localStorage.getItem('lagos_master_ref_image');
       if (localRef) {
