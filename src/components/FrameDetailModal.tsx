@@ -6,10 +6,11 @@ import { buildScenePrompt } from '../utils/promptBuilder';
 interface FrameDetailModalProps {
   frame: AdvertFrame | null;
   masterReferenceImage?: string;
+  totalFrames?: number;
   onClose: () => void;
 }
 
-export function FrameDetailModal({ frame, masterReferenceImage, onClose }: FrameDetailModalProps) {
+export function FrameDetailModal({ frame, masterReferenceImage, totalFrames = 13, onClose }: FrameDetailModalProps) {
   const [grainIntensity, setGrainIntensity] = useState(25);
   const [copied, setCopied] = useState(false);
   const [showComparison, setShowComparison] = useState(true);
@@ -45,7 +46,7 @@ export function FrameDetailModal({ frame, masterReferenceImage, onClose }: Frame
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-stone-800 bg-stone-900/70">
           <div className="flex items-center gap-2.5">
             <span className="font-mono text-sm font-bold text-amber-400">
-              FRAME #{frame.frameNumber < 10 ? `0${frame.frameNumber}` : frame.frameNumber} / 11
+              FRAME #{frame.frameNumber < 10 ? `0${frame.frameNumber}` : frame.frameNumber} / {totalFrames}
             </span>
             <span className="text-xs text-stone-400 font-mono">
               • 4:5 Vertical Portrait • Kodak Portra 400
@@ -137,6 +138,44 @@ export function FrameDetailModal({ frame, masterReferenceImage, onClose }: Frame
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                     />
+
+                    {/* Review Card Overlay (top-centre) */}
+                    {frame.reviewCard && (
+                      <div className="absolute top-5 left-1/2 -translate-x-1/2 z-20 w-[88%] bg-stone-900/95 border border-amber-500/50 shadow-2xl rounded-xl p-3 backdrop-blur-md text-left pointer-events-none">
+                        <div className="flex items-center justify-between gap-1 mb-1.5 border-b border-stone-800 pb-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-400 font-mono">
+                              {frame.reviewCard.platform}
+                            </span>
+                          </div>
+                          <span className="text-[9px] font-mono text-stone-500 uppercase">Verified Victim Report</span>
+                        </div>
+                        <div className="flex items-center gap-0.5 mb-1.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <span
+                              key={star}
+                              className={`text-sm leading-none ${
+                                star <= frame.reviewCard!.stars ? 'text-amber-400 font-bold' : 'text-stone-700'
+                              }`}
+                            >
+                              ★
+                            </span>
+                          ))}
+                          <span className="text-[10px] font-mono text-amber-300 font-semibold ml-1.5">
+                            {frame.reviewCard.stars}.0 / 5
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-stone-100 leading-snug">
+                          "{frame.reviewCard.text}"
+                        </p>
+                        {frame.reviewCard.subtext && (
+                          <p className="text-[10px] text-stone-400 mt-1 font-mono">
+                            {frame.reviewCard.subtext}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {/* Organic film grain simulation overlay */}
                     <div
                       className="absolute inset-0 pointer-events-none mix-blend-overlay"
@@ -176,11 +215,34 @@ export function FrameDetailModal({ frame, masterReferenceImage, onClose }: Frame
 
           {/* Right: Technical Slate & Prompt Details */}
           <div className="md:col-span-5 flex flex-col gap-4 text-xs">
+            {frame.dialogue && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5">
+                <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-bold block">
+                  Spoken Dialogue
+                </span>
+                <p className="font-serif italic text-amber-200 text-sm leading-snug">
+                  {frame.dialogue}
+                </p>
+                {frame.studioMotion && (
+                  <div className="text-[11px] font-mono text-stone-300 pt-1 border-t border-amber-500/20">
+                    <span className="text-amber-400 font-semibold uppercase text-[10px]">Motion: </span>
+                    <span>{frame.studioMotion}</span>
+                  </div>
+                )}
+                {frame.expectedVisual && (
+                  <div className="text-[11px] text-stone-300 pt-0.5">
+                    <span className="text-amber-400/90 font-mono font-semibold uppercase text-[10px]">Expect: </span>
+                    <span className="italic">{frame.expectedVisual}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <span className="text-[11px] font-mono text-amber-400 uppercase tracking-wider block">
                 Scene Specification
               </span>
-              <p className="text-sm font-medium text-stone-100 mt-1">
+              <p className="text-sm font-medium text-stone-100 mt-1 leading-relaxed">
                 {frame.sceneDescription || "Awaiting scene description..."}
               </p>
             </div>
@@ -192,19 +254,15 @@ export function FrameDetailModal({ frame, masterReferenceImage, onClose }: Frame
               </span>
               <div className="text-stone-300 flex items-center gap-2">
                 <span className="text-emerald-400">✓</span>
-                <span>Subject: Nigerian man, early 30s, warm dark brown skin</span>
+                <span>Master Reference Portrait Identity Locked</span>
               </div>
               <div className="text-stone-300 flex items-center gap-2">
                 <span className="text-emerald-400">✓</span>
-                <span>Grooming: Short neat hair, thin moustache, clean cheeks & chin</span>
+                <span>Wardrobe & Facial Features Continuity Preserved</span>
               </div>
               <div className="text-stone-300 flex items-center gap-2">
                 <span className="text-emerald-400">✓</span>
-                <span>Wardrobe: Identical faded blue short-sleeve shirt</span>
-              </div>
-              <div className="text-stone-300 flex items-center gap-2">
-                <span className="text-emerald-400">✓</span>
-                <span>Framing: Vertical 4:5, 35mm documentary photography</span>
+                <span>Framing: Vertical 4:5, 35mm Portra 400 Color Grade</span>
               </div>
               <div className="text-stone-300 flex items-center gap-2">
                 <span className="text-emerald-400">✓</span>

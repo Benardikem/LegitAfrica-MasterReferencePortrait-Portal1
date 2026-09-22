@@ -1,14 +1,10 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Persistence storage file path
 const STORAGE_FILE = path.join(process.cwd(), "campaign-state.json");
@@ -39,6 +35,7 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+  app.use(express.static(path.join(process.cwd(), "public")));
 
   // Shared Gemini client helper
   function getGenAI() {
@@ -63,6 +60,15 @@ async function startServer() {
 
   // Reference image state endpoints
   app.get("/api/reference-image", (req, res) => {
+    if (
+      masterReferenceImage &&
+      typeof masterReferenceImage === "string" &&
+      masterReferenceImage.startsWith("/master-reference-portrait") &&
+      !fs.existsSync(MASTER_REF_FILE)
+    ) {
+      masterReferenceImage = null;
+    }
+
     res.json({
       imageUrl: masterReferenceImage,
       hasImage: !!masterReferenceImage,
@@ -118,9 +124,70 @@ async function startServer() {
 
   // Frames state persistence
   app.get("/api/frames-state", (req, res) => {
+    if (fs.existsSync(STORAGE_FILE)) {
+      try {
+        const raw = fs.readFileSync(STORAGE_FILE, "utf-8");
+        const data = JSON.parse(raw);
+        if (data.frames) savedFramesState = data.frames;
+      } catch (e) {}
+    }
     res.json({
       frames: savedFramesState,
     });
+  });
+
+  app.post("/api/save-frames-state", (req, res) => {
+    try {
+      const { frames } = req.body || {};
+      if (Array.isArray(frames)) {
+        savedFramesState = frames;
+        fs.writeFileSync(
+          STORAGE_FILE,
+          JSON.stringify(
+            {
+              masterReferenceImage,
+              frames: savedFramesState,
+              updatedAt: new Date().toISOString(),
+            },
+            null,
+            2
+          )
+        );
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/reset-campaign", (req, res) => {
+    try {
+      masterReferenceImage = null;
+      const { frames } = req.body || {};
+      savedFramesState = frames || null;
+      if (fs.existsSync(MASTER_REF_FILE)) {
+        try { fs.unlinkSync(MASTER_REF_FILE); } catch (e) {}
+      }
+      if (savedFramesState) {
+        fs.writeFileSync(
+          STORAGE_FILE,
+          JSON.stringify(
+            {
+              masterReferenceImage: null,
+              frames: savedFramesState,
+              updatedAt: new Date().toISOString(),
+            },
+            null,
+            2
+          )
+        );
+      } else if (fs.existsSync(STORAGE_FILE)) {
+        try { fs.unlinkSync(STORAGE_FILE); } catch (e) {}
+      }
+      res.json({ success: true, message: "Campaign reset successfully" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.post("/api/save-frames-state", (req, res) => {
@@ -208,7 +275,8 @@ async function startServer() {
 
       // Check if we have a reference portrait image to provide for identity continuity
       let referenceInlinePart: any = null;
-      const refToUse = clientRefImage || masterReferenceImage;
+      const skipRef = clientRefImage === "none" || req.body.noReference === true;
+      const refToUse = skipRef ? null : (clientRefImage || masterReferenceImage);
 
       if (refToUse && typeof refToUse === "string") {
         if (refToUse.startsWith("data:image/")) {
@@ -225,7 +293,26 @@ async function startServer() {
       }
 
       // If not data url, check if file exists on disk
-      if (!referenceInlinePart && fs.existsSync(MASTER_REF_FILE)) {
+      if (!referenceInlinePart && refToUse && typeof refToUse === "string" && refToUse.startsWith("/")) {
+        const localCandidatePath = path.join(process.cwd(), "public", refToUse.replace(/^\//, ""));
+        if (fs.existsSync(localCandidatePath)) {
+          try {
+            const fileBuf = fs.readFileSync(localCandidatePath);
+            const ext = path.extname(localCandidatePath).toLowerCase();
+            const mimeType = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+            referenceInlinePart = {
+              inlineData: {
+                data: fileBuf.toString("base64"),
+                mimeType,
+              },
+            };
+          } catch (e) {
+            console.warn("Could not read local reference candidate file:", e);
+          }
+        }
+      }
+
+      if (!skipRef && !referenceInlinePart && fs.existsSync(MASTER_REF_FILE)) {
         try {
           const fileBuf = fs.readFileSync(MASTER_REF_FILE);
           referenceInlinePart = {

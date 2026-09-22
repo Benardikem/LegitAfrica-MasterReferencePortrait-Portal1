@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { X, Copy, Check, Download, Film, Sparkles } from 'lucide-react';
+import { X, Copy, Check, Download, Film, Sparkles, LayoutTemplate } from 'lucide-react';
 import { AdvertFrame, CharacterReference } from '../types';
 import { buildScenePrompt } from '../utils/promptBuilder';
+import { StudioTextCard } from './StudioTextCard';
 
 interface ContactSheetModalProps {
   isOpen: boolean;
@@ -21,10 +22,10 @@ export function ContactSheetModal({
   if (!isOpen) return null;
 
   const handleCopyAllPrompts = () => {
-    let text = `=== LAGOS FILM ADVERT: 11-FRAME CAMPAIGN PROMPTS ===\n\n`;
+    let text = `=== LAGOS FILM ADVERT: ${frames.length}-FRAME CAMPAIGN PROMPTS ===\n\n`;
     text += `MASTER REFERENCE PORTRAIT:\n${reference.prompt}\n\n`;
     frames.forEach((f) => {
-      text += `--- FRAME ${f.frameNumber} / 11 ---\n`;
+      text += `--- FRAME ${f.frameNumber} / ${frames.length} ---\n`;
       text += `SCENE: ${f.sceneDescription || '[Pending user scene]'}\n`;
       text += `COMPILED PROMPT:\n${buildScenePrompt(f.sceneDescription || `Scene ${f.frameNumber}`)}\n\n`;
     });
@@ -64,7 +65,7 @@ export function ContactSheetModal({
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold transition-colors shadow-sm"
             >
               {copiedAll ? <Check className="w-4 h-4 text-emerald-950" /> : <Copy className="w-4 h-4" />}
-              <span>{copiedAll ? 'All Prompts Copied!' : 'Copy All 11 Prompts'}</span>
+              <span>{copiedAll ? 'All Prompts Copied!' : `Copy All ${frames.length} Prompts`}</span>
             </button>
 
             <button
@@ -82,7 +83,7 @@ export function ContactSheetModal({
           {/* Film Strip Header Markings */}
           <div className="flex items-center justify-between text-[11px] font-mono text-amber-500/80 mb-4 px-2 py-1 bg-stone-900/80 rounded border border-stone-800">
             <span>◄ KODAK SAFETY FILM • 400-2</span>
-            <span>LAGOS PRODUCTION ADVERT • 11 FRAMES</span>
+            <span>LAGOS PRODUCTION ADVERT • {frames.length} FRAMES</span>
             <span>EASTMAN KODAK CO. ►</span>
           </div>
 
@@ -125,8 +126,12 @@ export function ContactSheetModal({
                   <span>4:5</span>
                 </div>
 
-                <div className="relative aspect-[4/5] bg-stone-950 flex items-center justify-center">
-                  {frame.imageUrl ? (
+                <div className="relative aspect-[4/5] bg-stone-950 flex items-center justify-center overflow-hidden">
+                  {frame.isStudioTextScene ? (
+                    <div className="w-full h-full scale-90">
+                      <StudioTextCard frame={frame} />
+                    </div>
+                  ) : frame.imageUrl ? (
                     <img
                       src={frame.imageUrl}
                       alt={`Frame ${frame.frameNumber}`}

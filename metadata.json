@@ -1,6 +1,6 @@
 {
   "name": "Film Advert Frame Studio",
-  "description": "Production studio for an 11-frame 35mm film advert featuring a consistent character across scenes with Lagos color grading.",
+  "description": "Production studio for a 35mm film advert featuring a consistent character across scenes with Lagos color grading.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

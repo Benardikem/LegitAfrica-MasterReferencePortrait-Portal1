@@ -10,12 +10,10 @@ import {
   Unlock,
   RefreshCw,
   AlertCircle,
-  Save,
   Trash2,
-  X,
-  FileImage,
 } from 'lucide-react';
 import { CharacterReference } from '../types';
+import { ResetConfirmModal } from './ResetConfirmModal';
 
 interface ReferencePortraitCardProps {
   reference: CharacterReference;
@@ -39,12 +37,12 @@ export function ReferencePortraitCard({
   isBillingError,
 }: ReferencePortraitCardProps) {
   const [copied, setCopied] = useState(false);
-  const [stagedImage, setStagedImage] = useState<string | null>(null);
-  const [stagedFileName, setStagedFileName] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceFileInputRef = useRef<HTMLInputElement>(null);
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
 
   const handleCopyPrompt = () => {
     navigator.clipboard.writeText(reference.prompt);
@@ -58,11 +56,21 @@ export function ReferencePortraitCard({
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const dataUrl = reader.result as string;
-      setStagedImage(dataUrl);
-      setStagedFileName(file.name);
+      setIsSaving(true);
       setSaveSuccessMsg(null);
+      try {
+        await onSaveReference(dataUrl);
+        setSaveSuccessMsg('Master Reference Portrait Uploaded & Locked as Active Anchor!');
+        setTimeout(() => setSaveSuccessMsg(null), 5000);
+      } catch (err) {
+        console.error('Failed to save reference:', err);
+      } finally {
+        setIsSaving(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (replaceFileInputRef.current) replaceFileInputRef.current.value = '';
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -90,46 +98,14 @@ export function ReferencePortraitCard({
     }
   };
 
-  const handleSaveAndLock = async () => {
-    const imageToSave = stagedImage || reference.imageUrl;
-    if (!imageToSave) return;
-
-    setIsSaving(true);
-    try {
-      await onSaveReference(imageToSave);
-      setStagedImage(null);
-      setStagedFileName(null);
-      setSaveSuccessMsg('Master Reference Portrait Saved & Locked as Character Anchor!');
-      setTimeout(() => setSaveSuccessMsg(null), 5000);
-    } catch (err) {
-      console.error('Save failed:', err);
-    } finally {
-      setIsSaving(false);
+  const handleConfirmClear = () => {
+    setSaveSuccessMsg(null);
+    if (onClearReference) {
+      onClearReference();
     }
   };
 
-  const handleCancelStaging = () => {
-    setStagedImage(null);
-    setStagedFileName(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleUnlockAndClear = () => {
-    if (confirm('Are you sure you want to unlock and clear the Master Reference Portrait?')) {
-      setStagedImage(null);
-      setStagedFileName(null);
-      setSaveSuccessMsg(null);
-      if (onClearReference) {
-        onClearReference();
-      }
-    }
-  };
-
-  const activeDisplayImage = stagedImage || reference.imageUrl;
-  const isPendingSave = !!stagedImage;
-  const isCurrentlyLocked = !!reference.imageUrl && !stagedImage;
+  const isCurrentlyLocked = Boolean(reference.imageUrl);
 
   return (
     <div
@@ -141,11 +117,7 @@ export function ReferencePortraitCard({
         <div className="flex items-center gap-2">
           <span
             className={`w-2.5 h-2.5 rounded-full ${
-              isCurrentlyLocked
-                ? 'bg-emerald-400 animate-pulse'
-                : isPendingSave
-                ? 'bg-amber-400 animate-ping'
-                : 'bg-stone-500'
+              isCurrentlyLocked ? 'bg-emerald-400 animate-pulse' : 'bg-stone-500'
             }`}
           />
           <h2 className="text-base font-semibold text-stone-100 flex items-center gap-2">
@@ -154,11 +126,6 @@ export function ReferencePortraitCard({
               <span className="px-2 py-0.5 text-[11px] font-mono font-medium rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 flex items-center gap-1">
                 <Lock className="w-3 h-3 text-emerald-400" />
                 LOCKED ANCHOR (ACTIVE)
-              </span>
-            ) : isPendingSave ? (
-              <span className="px-2 py-0.5 text-[11px] font-mono font-medium rounded bg-amber-500/20 border border-amber-500/50 text-amber-300 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3 text-amber-400" />
-                PHOTO STAGED • CLICK SAVE BELOW
               </span>
             ) : (
               <span className="px-2 py-0.5 text-[11px] font-mono font-medium rounded bg-stone-800 border border-stone-700 text-stone-400 flex items-center gap-1">
@@ -170,6 +137,18 @@ export function ReferencePortraitCard({
         </div>
 
         <div className="flex items-center gap-2">
+          {isCurrentlyLocked && (
+            <button
+              id="btn-top-clear-reference"
+              onClick={() => setIsClearModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 transition-colors cursor-pointer"
+              title="Unlock and clear the master reference portrait"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Reference</span>
+            </button>
+          )}
+
           <button
             id="btn-copy-ref-prompt"
             onClick={handleCopyPrompt}
@@ -192,15 +171,7 @@ export function ReferencePortraitCard({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 MASTER ANCHOR LOCKED
               </span>
-              <span className="text-[10px] font-mono text-emerald-400/80">Active for all 11 scenes</span>
-            </div>
-          ) : isPendingSave ? (
-            <div className="w-full max-w-[280px] mb-2 px-2.5 py-1.5 rounded-lg bg-amber-950/70 border border-amber-500/60 flex items-center justify-between text-[11px] text-amber-300 shadow-sm animate-pulse">
-              <span className="flex items-center gap-1.5 font-semibold">
-                <AlertCircle className="w-3 h-3 text-amber-400" />
-                PHOTO READY TO SAVE
-              </span>
-              <span className="text-[10px] font-mono text-amber-300/90 font-bold">Unsaved Changes</span>
+              <span className="text-[10px] font-mono text-emerald-400/80">Active for all scenes</span>
             </div>
           ) : (
             <div className="w-full max-w-[280px] mb-2 px-2.5 py-1.5 rounded-lg bg-stone-950/60 border border-stone-800 flex items-center justify-between text-[11px] text-stone-400">
@@ -221,8 +192,6 @@ export function ReferencePortraitCard({
             className={`relative w-full max-w-[280px] aspect-[4/5] bg-stone-950 rounded-xl overflow-hidden border shadow-2xl group transition-all ${
               isDragging
                 ? 'border-amber-400 ring-4 ring-amber-400/30 bg-amber-950/30'
-                : isPendingSave
-                ? 'border-amber-500 ring-2 ring-amber-500/40'
                 : isCurrentlyLocked
                 ? 'border-emerald-500/70 ring-2 ring-emerald-500/20'
                 : 'border-stone-800'
@@ -230,36 +199,34 @@ export function ReferencePortraitCard({
           >
             {/* Film Edge Slate Simulation */}
             <div className="absolute top-2 left-2 z-10 font-mono text-[9px] text-amber-400/90 bg-stone-950/90 px-1.5 py-0.5 rounded backdrop-blur">
-              {isCurrentlyLocked ? 'LOCKED REFERENCE • 85mm' : isPendingSave ? 'PREVIEW (UNSAVED)' : 'PORTRA 400 • 35MM'}
+              {isCurrentlyLocked ? 'LOCKED REFERENCE • 85mm' : 'PORTRA 400 • 35MM'}
             </div>
             <div className="absolute top-2 right-2 z-10 font-mono text-[9px] text-stone-400/90 bg-stone-950/90 px-1.5 py-0.5 rounded backdrop-blur">
               4:5 PORTRAIT
             </div>
 
-            {/* If an image is uploaded or staged, show the REAL image */}
-            {activeDisplayImage ? (
+            {/* If an image is locked, show the REAL image */}
+            {reference.imageUrl ? (
               <>
                 <img
-                  src={activeDisplayImage}
-                  alt="Master Reference Portrait of the Nigerian man in faded blue shirt"
+                  src={reference.imageUrl}
+                  alt="Master Reference Portrait character anchor"
                   className="w-full h-full object-cover object-center"
                   referrerPolicy="no-referrer"
                 />
 
-                {/* Staged pending overlay badge */}
-                {isPendingSave && (
-                  <div className="absolute bottom-2 inset-x-2 bg-amber-950/90 border border-amber-500/60 p-2 rounded-lg text-center backdrop-blur-sm z-20">
-                    <span className="text-[11px] font-bold text-amber-300 block">
-                      Preview: {stagedFileName || 'Uploaded Photo'}
-                    </span>
-                    <span className="text-[10px] text-amber-200/90 block mt-0.5 font-mono">
-                      Click "Save & Lock Master Reference" below
-                    </span>
-                  </div>
-                )}
+                {/* Hover Inspect Overlay */}
+                <button
+                  id="btn-inspect-reference"
+                  onClick={onViewFullscreen}
+                  className="absolute inset-0 bg-stone-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-xs font-medium text-stone-100 transition-opacity backdrop-blur-sm cursor-pointer z-20"
+                >
+                  <Eye className="w-4 h-4 text-amber-400" />
+                  <span>Inspect 4:5 Master Frame</span>
+                </button>
               </>
             ) : (
-              /* Professional Darkroom Dropzone / Slate Placeholder (NO demo cartoon) */
+              /* Clean Darkroom Dropzone */
               <div
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full h-full relative flex flex-col items-center justify-center p-6 text-center bg-stone-950 hover:bg-stone-900/60 cursor-pointer transition-colors"
@@ -278,7 +245,7 @@ export function ReferencePortraitCard({
                   Master Reference Portrait
                 </span>
                 <p className="text-[11px] text-stone-400 mt-1 leading-relaxed max-w-[210px]">
-                  Drop or select a photo of the Nigerian character in his faded blue shirt
+                  Drop or select a portrait photo to lock as the primary character anchor for all scenes
                 </p>
 
                 <div className="mt-4 px-3 py-1.5 rounded-lg bg-amber-500 text-stone-950 text-xs font-semibold flex items-center gap-1.5 shadow-md group-hover:bg-amber-400">
@@ -290,18 +257,6 @@ export function ReferencePortraitCard({
                   or drag and drop photo here
                 </span>
               </div>
-            )}
-
-            {/* Hover Inspect Overlay Controls (if image is locked) */}
-            {isCurrentlyLocked && (
-              <button
-                id="btn-inspect-reference"
-                onClick={onViewFullscreen}
-                className="absolute inset-0 bg-stone-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-xs font-medium text-stone-100 transition-opacity backdrop-blur-sm cursor-pointer z-20"
-              >
-                <Eye className="w-4 h-4 text-amber-400" />
-                <span>Inspect 4:5 Master Frame</span>
-              </button>
             )}
           </div>
 
@@ -315,35 +270,10 @@ export function ReferencePortraitCard({
 
           {/* Action Buttons & Save Controls */}
           <div className="w-full max-w-[280px] mt-3 flex flex-col gap-2">
-            {/* PRIMARY SAVE BUTTON IF STAGED */}
-            {isPendingSave ? (
-              <div className="flex flex-col gap-1.5">
-                <button
-                  id="btn-save-lock-reference"
-                  onClick={handleSaveAndLock}
-                  disabled={isSaving}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:bg-stone-800 disabled:text-stone-500 text-white font-bold text-xs transition-all shadow-lg ring-2 ring-emerald-400/40 cursor-pointer animate-pulse"
-                >
-                  {isSaving ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Saving & Locking Reference...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>SAVE & LOCK MASTER REFERENCE</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  onClick={handleCancelStaging}
-                  className="w-full flex items-center justify-center gap-1.5 py-1 px-3 rounded text-[11px] text-stone-400 hover:text-stone-200 hover:bg-stone-800/80 transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Discard staged photo</span>
-                </button>
+            {isSaving ? (
+              <div className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-stone-800 border border-stone-700 text-amber-400 text-xs font-semibold">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Saving & Locking Reference...</span>
               </div>
             ) : isCurrentlyLocked ? (
               /* ALREADY LOCKED STATE */
@@ -354,16 +284,18 @@ export function ReferencePortraitCard({
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <label
-                    htmlFor="upload-ref-input-replace"
+                  <button
+                    type="button"
+                    onClick={() => replaceFileInputRef.current?.click()}
                     className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-[11px] font-medium border border-stone-700 cursor-pointer transition-colors"
                   >
                     <Upload className="w-3 h-3 text-stone-400" />
                     <span>Replace Photo</span>
-                  </label>
+                  </button>
 
                   <button
-                    onClick={handleUnlockAndClear}
+                    type="button"
+                    onClick={() => setIsClearModalOpen(true)}
                     className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-stone-900 hover:bg-red-950/60 text-stone-400 hover:text-red-300 text-[11px] font-medium border border-stone-800 hover:border-red-800/50 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -374,15 +306,17 @@ export function ReferencePortraitCard({
             ) : (
               /* AWAITING PHOTO STATE */
               <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="upload-ref-input"
-                  className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md cursor-pointer transition-colors"
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md cursor-pointer transition-colors"
                 >
                   <Upload className="w-4 h-4" />
                   <span>Upload Master Reference Photo</span>
-                </label>
+                </button>
 
                 <button
+                  type="button"
                   id="btn-generate-reference"
                   onClick={onGenerate}
                   disabled={isGenerating}
@@ -413,6 +347,7 @@ export function ReferencePortraitCard({
               className="hidden"
             />
             <input
+              ref={replaceFileInputRef}
               id="upload-ref-input-replace"
               type="file"
               accept="image/*"
@@ -430,12 +365,12 @@ export function ReferencePortraitCard({
             </span>
             <p className="text-xs text-stone-300 mt-1 leading-relaxed">
               Every subsequent advert frame inherits these strict physical and photographic anchors to guarantee
-              unwavering continuity across all 11 scenes.
+              unwavering continuity across all advert scenes.
             </p>
           </div>
 
           {/* Master Reference Active Notice */}
-          {isCurrentlyLocked && (
+          {isCurrentlyLocked ? (
             <div className="bg-emerald-950/50 border border-emerald-500/40 rounded-lg p-3 text-xs text-emerald-200 flex items-start gap-2.5 shadow-sm">
               <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <div>
@@ -443,23 +378,20 @@ export function ReferencePortraitCard({
                   Master Reference Portrait Locked & Active
                 </span>
                 <p className="text-[11px] text-emerald-200/80 mt-0.5 leading-relaxed">
-                  Your uploaded portrait is permanently locked as the master character anchor across all 11 advert scenes. 
-                  All scene prompts explicitly reference this exact face, skin tone, grooming, and faded blue shirt.
+                  Your reference portrait is permanently locked as the master character anchor. 
+                  All scene prompts strictly inherit this face, skin tone, haircut, features, and physical appearance.
                 </p>
               </div>
             </div>
-          )}
-
-          {/* Unsaved Warning Notice */}
-          {isPendingSave && (
-            <div className="bg-amber-950/50 border border-amber-500/50 rounded-lg p-3 text-xs text-amber-200 flex items-start gap-2.5 shadow-sm">
+          ) : (
+            <div className="bg-stone-950/60 border border-stone-800 rounded-lg p-3 text-xs text-stone-400 flex items-start gap-2.5 shadow-sm">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <span className="font-semibold text-amber-300 block">
-                  Click "SAVE & LOCK MASTER REFERENCE" on the left
+                <span className="font-semibold text-stone-200 block">
+                  Upload Your Character Reference
                 </span>
-                <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
-                  Your uploaded photo is currently in preview mode. Click the green Save button to lock it into Step 1 and bind it to all 11 scenes.
+                <p className="text-[11px] text-stone-400 mt-0.5 leading-relaxed">
+                  Upload a 4:5 portrait photograph of your protagonist (face, skin tone, haircut, and clothing). Once uploaded, it is automatically locked as the identity anchor for all scenes.
                 </p>
               </div>
             </div>
@@ -468,40 +400,40 @@ export function ReferencePortraitCard({
           {/* Spec Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
-              <span className="text-stone-500 text-[11px] block">Identity & Age</span>
-              <span className="font-medium text-stone-200">Nigerian, Early 30s</span>
+              <span className="text-stone-500 text-[11px] block">Identity Anchor</span>
+              <span className="font-medium text-stone-200">{reference.name || 'Protagonist'}</span>
             </div>
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
-              <span className="text-stone-500 text-[11px] block">Skin Tone</span>
-              <span className="font-medium text-stone-200">Warm dark brown</span>
+              <span className="text-stone-500 text-[11px] block">Skin Tone & Features</span>
+              <span className="font-medium text-stone-200">{reference.complexion || 'Natural skin tone'}</span>
             </div>
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
-              <span className="text-stone-500 text-[11px] block">Hair Grooming</span>
-              <span className="font-medium text-stone-200">Short neat hair</span>
+              <span className="text-stone-500 text-[11px] block">Hair & Styling</span>
+              <span className="font-medium text-amber-300">{reference.hair || 'Authentic styling'}</span>
             </div>
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
-              <span className="text-stone-500 text-[11px] block">Facial Hair</span>
-              <span className="font-medium text-stone-200">Thin moustache, clean chin</span>
-            </div>
-            <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
-              <span className="text-stone-500 text-[11px] block">Signature Wardrobe</span>
-              <span className="font-medium text-amber-300">Faded blue shirt, dark trousers</span>
+              <span className="text-stone-500 text-[11px] block">Emotional Register</span>
+              <span className="font-medium text-stone-200">Authentic, contained stillness</span>
             </div>
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
               <span className="text-stone-500 text-[11px] block">Reference Lens</span>
-              <span className="font-medium text-stone-200">85mm front-facing</span>
+              <span className="font-medium text-stone-200">{reference.lens || '85mm portrait, front-facing'}</span>
             </div>
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
               <span className="text-stone-500 text-[11px] block">Film Stock</span>
-              <span className="font-medium text-stone-200">Kodak Portra 400</span>
+              <span className="font-medium text-stone-200">{reference.filmStock || 'Kodak Portra 400 (35mm)'}</span>
             </div>
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
               <span className="text-stone-500 text-[11px] block">Color Grading</span>
-              <span className="font-medium text-stone-200">Warm Lagos palette</span>
+              <span className="font-medium text-stone-200">{reference.colorGrade || 'Warm Lagos, natural light'}</span>
+            </div>
+            <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
+              <span className="text-stone-500 text-[11px] block">Aspect Ratio</span>
+              <span className="font-medium text-amber-300">4:5 Vertical Portrait</span>
             </div>
             <div className="bg-stone-950/80 p-2.5 rounded-lg border border-stone-800">
               <span className="text-stone-500 text-[11px] block">Negative Rule</span>
-              <span className="font-medium text-red-400">Zero text / watermarks</span>
+              <span className="font-medium text-red-400">Zero text, signage, or logos</span>
             </div>
           </div>
 
@@ -526,18 +458,26 @@ export function ReferencePortraitCard({
                 <p className="font-medium">
                   {isBillingError
                     ? "Google Cloud Prepayment Credits Depleted"
-                    : "Image Generation Note"}
+                    : "Gemini API Connection Notice"}
                 </p>
-                <p className="text-[11px] text-red-300/90 mt-0.5 leading-relaxed">
-                  {isBillingError
-                    ? "Your selected Google AI project has depleted its prepayment credits for image generation. You can manage project billing at ai.studio/projects, or use the prompt above directly in your image generation workflow or upload custom photo stills."
-                    : apiError}
+                <p className="text-[11px] mt-0.5 text-red-300/80">
+                  {apiError}
                 </p>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Clear Confirmation Modal */}
+      <ResetConfirmModal
+        isOpen={isClearModalOpen}
+        onClose={() => setIsClearModalOpen(false)}
+        onConfirm={handleConfirmClear}
+        title="Clear Master Reference Portrait?"
+        description="This will unlock and remove the current master reference photo. Scene generations will no longer have this character anchor until a new photo is uploaded or generated."
+        confirmLabel="Clear Reference Photo"
+      />
     </div>
   );
 }
